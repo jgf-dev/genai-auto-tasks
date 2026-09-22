@@ -1,4 +1,4 @@
-## [Unreleased] - 2026-09-22
+## [PR-3](https://github.com/jgf-dev/genai-auto-tasks/pull/3) - 2026-09-22
 
 ### Summary
 
