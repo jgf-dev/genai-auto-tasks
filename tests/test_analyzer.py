@@ -35,7 +35,7 @@ def test_analyze_images_success(mock_genai_client):
 
     # Execute
     # We mock Image.open to avoid needing real files
-    with patch("PIL.Image.open") as mock_open:
+    with patch("PIL.Image.open"):
         result = analyzer.analyze_images(["dummy.jpg"])
 
     # Verify
@@ -44,6 +44,65 @@ def test_analyze_images_success(mock_genai_client):
     assert result.grade.sheldon_scale == 45
     assert "Cleaned" in result.grade.adjectival_grade
 
-    # Verify call arguments
     args, kwargs = mock_genai_client.models.generate_content.call_args
     assert kwargs["model"] == "gemini-2.0-flash"
+    prompt = kwargs["contents"][0]
+    assert "hairlines" in prompt.lower()
+    assert "Details" in prompt
+
+
+def test_analyze_images_raises_when_all_images_fail_to_load(mock_genai_client):
+    analyzer = CoinAnalyzer(api_key="fake_key")
+    analyzer.client = mock_genai_client
+
+    with patch("PIL.Image.open", side_effect=OSError("cannot identify image")):
+        with pytest.raises(ValueError, match="No valid images"):
+            analyzer.analyze_images(["broken.jpg"])
+
+    mock_genai_client.models.generate_content.assert_not_called()
+
+
+def test_analyze_images_skips_unreadable_files(mock_genai_client):
+    analyzer = CoinAnalyzer(api_key="fake_key")
+    analyzer.client = mock_genai_client
+
+    mock_response = MagicMock()
+    mock_response.text = """
+    {
+        "identity": {"country": "Canada", "denomination": "50 Cents"},
+        "grade": {"adjectival_grade": "VF", "visual_description": "wear"}
+    }
+    """
+    mock_genai_client.models.generate_content.return_value = mock_response
+
+    def open_image(path):
+        if path.endswith("bad.jpg"):
+            raise OSError("cannot identify image")
+        return MagicMock(name=path)
+
+    with patch("PIL.Image.open", side_effect=open_image):
+        result = analyzer.analyze_images(["bad.jpg", "good.jpg"])
+
+    assert result.identity.country == "Canada"
+    contents = mock_genai_client.models.generate_content.call_args.kwargs["contents"]
+    assert len(contents) == 2
+
+
+def test_analyze_images_raises_on_empty_gemini_response(mock_genai_client):
+    analyzer = CoinAnalyzer(api_key="fake_key")
+    analyzer.client = mock_genai_client
+    mock_genai_client.models.generate_content.return_value = MagicMock(text="")
+
+    with patch("PIL.Image.open", return_value=MagicMock()):
+        with pytest.raises(ValueError, match="Empty response from Gemini"):
+            analyzer.analyze_images(["coin.jpg"])
+
+
+def test_analyze_images_raises_on_invalid_json(mock_genai_client):
+    analyzer = CoinAnalyzer(api_key="fake_key")
+    analyzer.client = mock_genai_client
+    mock_genai_client.models.generate_content.return_value = MagicMock(text="not-json")
+
+    with patch("PIL.Image.open", return_value=MagicMock()):
+        with pytest.raises(Exception):
+            analyzer.analyze_images(["coin.jpg"])
