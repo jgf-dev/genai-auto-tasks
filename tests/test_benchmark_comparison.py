@@ -6,11 +6,12 @@ import pytest
 
 from src.agent import main
 
+pytestmark = pytest.mark.integration
+
 # Paths
 BASE_DIR = Path(__file__).parent.parent
 IMAGE_DIR = BASE_DIR / "images" / "can-50c-1950-1"
 EVAL_REPORT = IMAGE_DIR / "evaluation_report.md"
-STD_REPORT = IMAGE_DIR / "comparison_standard_report.md"
 
 
 def parse_price(text, label):
@@ -23,6 +24,10 @@ def parse_price(text, label):
     return None
 
 
+@pytest.mark.skipif(
+    os.getenv("RUN_LIVE_BENCHMARK") != "1",
+    reason="Live Gemini/DDGS benchmark; set RUN_LIVE_BENCHMARK=1 to enable",
+)
 def test_benchmark_accuracy():
     """
     Runs the agent on the sample image directory and compares the output
@@ -47,7 +52,6 @@ def test_benchmark_accuracy():
     assert EVAL_REPORT.exists()
 
     agent_text = EVAL_REPORT.read_text()
-    std_text = STD_REPORT.read_text()
 
     print("\n--- Agent Output Summary ---")
     print(agent_text[:500] + "...")
